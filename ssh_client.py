@@ -156,7 +156,6 @@ class SSHClient:
             'kernel': 'uname -r',
             'os': 'cat /etc/os-release | grep PRETTY_NAME | cut -d= -f2 | tr -d \'"\'',
             'architecture': 'uname -m',
-            'uptime': 'uptime',
             'whoami': 'whoami',
             'id': 'id',
             'pwd': 'pwd'

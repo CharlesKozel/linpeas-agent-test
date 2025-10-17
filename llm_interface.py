@@ -4,6 +4,8 @@ import os
 import json
 from typing import Dict, List, Optional
 from dotenv import load_dotenv
+import tiktoken
+
 
 # Load environment variables
 load_dotenv()
@@ -12,6 +14,7 @@ class LLMInterface:
     
     def __init__(self, model: str = None, api_key: str = None):
         self.model = model or os.getenv('OPENAI_MODEL', 'gpt-4')
+        print(f">>> Using LLM model: {self.model} <<<")
         self.api_key = api_key or os.getenv('OPENAI_API_KEY')
         
         if not self.api_key:
@@ -23,54 +26,43 @@ class LLMInterface:
         
         self.logger = logging.getLogger(__name__)
         
-        # Conversation history for context
-        self.conversation_history = []
 
-    def prompt_llm(self, user_prompt: str, system_prompt: str) -> str:
+    def prompt_llm(self, user_prompt, system_prompt) -> str:
         try:
-
-            
-            # Build messages with proper history management
-            messages = [{"role": "system", "content": system_prompt}]
-            
-            # Add recent conversation history (keep last N exchanges)
-            if self.conversation_history:
-                # Keep last 8 messages (4 exchanges) to stay within context limits
-                recent_history = self.conversation_history[-8:]
-                messages.extend(recent_history)
-            
-            # Add current user message
-            messages.append({"role": "user", "content": user_prompt})
+            messages = [system_prompt, user_prompt]
             
             # Calculate approximate token count to stay within limits
-            total_chars = sum(len(msg["content"]) for msg in messages)
-            if total_chars > 12000:  # Rough estimate for token limit
-                # Trim history more aggressively if approaching limits
-                messages = [messages[0]]  # Keep system prompt
-                # Keep only last 4 messages (2 exchanges)
-                messages.extend(self.conversation_history[-4:])
-                messages.append({"role": "user", "content": user_prompt})
+            total_tokens = sum(self.num_tokens_from_string(msg["content"]) for msg in messages)
+            print(f"Estimated total tokens: {total_tokens}")
+            # TODO: Implement token limit checks and trimming if necessary
             
             
+            # Print messages being sent to LLM for monitoring
+            print("\n" + "="*80)
+            print(">>> SENDING TO LLM <<<")
+            print("="*80)
+            for i, msg in enumerate(messages):
+                role_label = msg["role"].upper()
+                print(f"\n[{i+1}] {role_label}:")
+                print(f"{msg['content']}")
+            print("\n" + "="*80 + "\n")
+            
+            # Call OpenAI API
             response = self.client.responses.create(
                 model=self.model,
                 input=messages,
-                temperature=0.3,
             )
-            
             response_content = response.output_text
+
+            print("\n" + "="*80)
+            print("🤖 LLM RESPONSE 🤖")
+            print("="*80)
+            print(f"\n{response_content}\n")
+            print("="*80)
+            print(f"✅ Response received successfully!")
+            print("="*80 + "\n")
             
-            # Add to conversation history
-            self.conversation_history.extend([
-                {"role": "user", "content": user_prompt},
-                {"role": "assistant", "content": response_content}
-            ])
-            
-            # Keep history manageable
-            if len(self.conversation_history) > 10:
-                self.conversation_history = self.conversation_history[-10:]
-            
-            self.logger.info(f"Received LLM response ({len(response_content)} characters)")
+            print(f"LLM response tokens: {self.num_tokens_from_string(response_content)}")
             return response_content
             
         except openai.RateLimitError:
@@ -83,3 +75,8 @@ class LLMInterface:
             self.logger.error(f"LLM API error: {e}")
             return f"Error communicating with LLM: {str(e)}"
     
+
+    def num_tokens_from_string(self, string: str) -> int:
+        encoding = tiktoken.encoding_for_model(self.model)
+        num_tokens = len(encoding.encode(string))
+        return num_tokens
